@@ -6,32 +6,32 @@ from copilot_usage_meter.metrics import build_usage_snapshot
 
 def _build_snapshot(
     payload: dict,
-    monthly_quota: float | None = None,
+    included_credits: float | None = None,
     license_name: str | None = None,
     username: str = "octocat",
 ) -> object:
     return build_usage_snapshot(
         username=username,
-        premium_usage_payload=payload,
+        usage_summary_payload=payload,
         fetched_at_utc=datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
-        monthly_quota=monthly_quota,
+        included_credits=included_credits,
         license_name=license_name,
     )
 
 
-def test_renders_compact_card_with_license_username_and_percentage() -> None:
+def test_renders_compact_card_with_percentage_metric_by_default() -> None:
     snapshot = _build_snapshot(
         {
             "usageItems": [
                 {
                     "product": "Copilot",
-                    "grossQuantity": 281,
+                    "grossQuantity": 1149.6,
                     "netAmount": 0.72,
                     "model": "gpt-4.1",
                 }
             ],
         },
-        monthly_quota=1500,
+        included_credits=7000,
         license_name="Copilot Pro+",
     )
 
@@ -39,11 +39,35 @@ def test_renders_compact_card_with_license_username_and_percentage() -> None:
 
     assert "Copilot Pro+" in output
     assert "@octocat" in output
-    assert "Premium requests" in output
+    assert "Credits" in output
     assert "\033[1m" not in output
-    assert "19% used" in output
-    assert "[####----------------]" in output
+    assert "16% used" in output
+    assert "1,149.6 / 7,000 used" not in output
+    assert "[###-----------------]" in output
     assert "Premium net billed amount" not in output
+
+
+def test_renders_credit_count_metric_when_requested() -> None:
+    snapshot = _build_snapshot(
+        {
+            "usageItems": [
+                {
+                    "product": "Copilot",
+                    "grossQuantity": 1149.6,
+                    "netAmount": 0.72,
+                    "model": "gpt-4.1",
+                }
+            ],
+        },
+        included_credits=7000,
+        license_name="Copilot Pro+",
+    )
+
+    output = render_snapshot(snapshot, show_credit_count=True)
+
+    assert "1,149.6 / 7,000 used" in output
+    assert "16% used" not in output
+    assert "[###-----------------]" in output
 
 def test_warns_when_no_personal_usage_data() -> None:
     snapshot = _build_snapshot(
@@ -86,7 +110,7 @@ def test_includes_stale_marker_and_error_reason() -> None:
                 }
             ]
         },
-        monthly_quota=1500,
+        included_credits=1500,
     )
 
     output = render_snapshot(snapshot, stale=True, stale_reason="Network timeout")

@@ -12,18 +12,20 @@ def render_snapshot(
     snapshot: UsageSnapshot,
     stale: bool = False,
     stale_reason: str = "",
+    show_credit_count: bool = False,
 ) -> str:
     percent_used = _get_usage_percentage(snapshot)
     percent_text = _format_percentage(percent_used)
     bar_text = _render_usage_bar(percent_used if percent_used is not None else 0.0)
     license_text = snapshot.license_name or "Copilot"
+    metric_text = _format_credit_usage(snapshot) if show_credit_count else f"{percent_text} used"
 
     lines = [
         _frame_border(),
         _frame_line(license_text),
         _frame_line(f"@{snapshot.username}"),
-        _frame_line("Premium requests"),
-        _frame_line(f"{percent_text} used"),
+        _frame_line("Credits"),
+        _frame_line(metric_text),
         _frame_line(f"[{bar_text}]"),
     ]
 
@@ -49,9 +51,7 @@ def _frame_line(value: str) -> str:
 
 
 def _get_usage_percentage(snapshot: UsageSnapshot) -> Optional[float]:
-    if snapshot.monthly_quota is None or snapshot.monthly_quota <= 0:
-        return None
-    return (snapshot.premium_requests_used / snapshot.monthly_quota) * 100.0
+    return snapshot.usage_percent
 
 
 def _format_percentage(value: Optional[float]) -> str:
@@ -68,3 +68,22 @@ def _render_usage_bar(percent_used: float, width: int = 20) -> str:
     clamped_percent = min(max(percent_used, 0.0), 100.0)
     filled_width = int(round((clamped_percent / 100.0) * width))
     return f"{'#' * filled_width}{'-' * (width - filled_width)}"
+
+
+def _format_credit_usage(snapshot: UsageSnapshot) -> str:
+    return f"{_format_credit_count(snapshot)} used"
+
+
+def _format_credit_count(snapshot: UsageSnapshot) -> str:
+    used_text = _format_quantity(snapshot.credits_used)
+    if snapshot.included_credits is None or snapshot.included_credits <= 0:
+        return used_text
+    included_text = _format_quantity(snapshot.included_credits)
+    return f"{used_text} / {included_text}"
+
+
+def _format_quantity(value: float) -> str:
+    formatted = f"{value:,.2f}".rstrip("0").rstrip(".")
+    if formatted == "-0":
+        return "0"
+    return formatted

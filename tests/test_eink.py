@@ -25,11 +25,12 @@ def _build_snapshot() -> UsageSnapshot:
     return UsageSnapshot(
         fetched_at_utc=datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
         username="octocat",
-        source="/users/octocat/settings/billing/premium_request/usage",
+        source="/users/octocat/settings/billing/usage/summary",
         license_name="Copilot Pro+",
-        premium_requests_used=281.0,
-        premium_net_amount_usd=0.72,
-        monthly_quota=1500.0,
+        credits_used=281.0,
+        credit_net_amount_usd=0.72,
+        included_credits=1500.0,
+        usage_percent=18.733333333333334,
         top_models=[],
         has_personal_usage_data=True,
     )

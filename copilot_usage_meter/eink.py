@@ -47,8 +47,19 @@ class EInkDisplay:
         except EINK_DRIVER_ERRORS as exc:
             raise EInkDisplayError(f"Failed to initialize e-ink display: {exc}") from exc
 
-    def render_snapshot(self, snapshot: UsageSnapshot, stale: bool = False, stale_reason: str = "") -> None:
-        image = self._build_image(snapshot, stale=stale, stale_reason=stale_reason)
+    def render_snapshot(
+        self,
+        snapshot: UsageSnapshot,
+        stale: bool = False,
+        stale_reason: str = "",
+        show_credit_count: bool = False,
+    ) -> None:
+        image = self._build_image(
+            snapshot,
+            stale=stale,
+            stale_reason=stale_reason,
+            show_credit_count=show_credit_count,
+        )
 
         try:
             display_buffer = self._epd.getbuffer(image)
@@ -109,7 +120,7 @@ class EInkDisplay:
         except TypeError:
             clear()
 
-    def _build_image(self, snapshot: UsageSnapshot, stale: bool, stale_reason: str):
+    def _build_image(self, snapshot: UsageSnapshot, stale: bool, stale_reason: str, show_credit_count: bool = False):
         panel_width = int(getattr(self._epd, "width", 122))
         panel_height = int(getattr(self._epd, "height", 250))
 
@@ -128,12 +139,20 @@ class EInkDisplay:
         percent_used = _usage_percentage(snapshot)
         percent_text = _format_percentage(percent_used)
         license_text = (snapshot.license_name or "Copilot").strip()
+        if show_credit_count:
+            metric_text = _format_credit_count(snapshot)
+            metric_suffix = "used"
+            metric_font = self._body_bold_font
+        else:
+            metric_text = percent_text
+            metric_suffix = "used"
+            metric_font = self._metric_font
 
         title_height = _text_height(draw, self._title_font)
         body_height = _text_height(draw, self._body_font)
         premium_title_height = _text_height(draw, self._body_bold_font)
-        metric_height = _text_height(draw, self._metric_font)
-        metric_suffix_height = _text_height(draw, self._small_font)
+        metric_height = _text_height(draw, metric_font)
+        metric_suffix_height = _text_height(draw, self._small_font) if metric_suffix else 0
         metric_block_height = max(metric_height, metric_suffix_height)
         bar_height = 12
 
@@ -146,10 +165,8 @@ class EInkDisplay:
             slot_count=4,
             minimum_gap=2,
         )
-        # Keep spacing around the percentage row visually even (top and bottom).
         metric_surround_gap = gap_values[2] + gap_values[3]
         if metric_surround_gap % 2 != 0:
-            # Borrow one pixel from an earlier gap so top/bottom metric gaps can match exactly.
             for donor_index in (1, 0):
                 if gap_values[donor_index] <= 0:
                     continue
@@ -168,16 +185,15 @@ class EInkDisplay:
         draw.text((inner_left, y), _truncate(f"@{snapshot.username}", 30), font=self._body_font, fill=0)
         y += body_height + gap_values[1]
 
-        draw.text((inner_left, y), "Premium requests", font=self._body_bold_font, fill=0)
+        draw.text((inner_left, y), "Credits", font=self._body_bold_font, fill=0)
         y += premium_title_height + gap_values[2]
 
-        metric_text = percent_text
-        metric_suffix = "used"
-        draw.text((inner_left, y), metric_text, font=self._metric_font, fill=0)
-
-        suffix_x = inner_left + _text_width(draw, f"{metric_text} ", self._metric_font)
-        suffix_y = y + max(0, metric_height - metric_suffix_height - 1)
-        draw.text((suffix_x, suffix_y), metric_suffix, font=self._small_font, fill=0)
+        metric_text = _truncate(metric_text, 28)
+        draw.text((inner_left, y), metric_text, font=metric_font, fill=0)
+        if metric_suffix:
+            suffix_x = inner_left + _text_width(draw, f"{metric_text} ", metric_font)
+            suffix_y = y + max(0, metric_height - metric_suffix_height - 1)
+            draw.text((suffix_x, suffix_y), metric_suffix, font=self._small_font, fill=0)
         y += metric_block_height
 
         bar_top = y + gap_values[3]
@@ -308,9 +324,7 @@ def _list_available_2in13_drivers(waveshare_package: Any) -> list[str]:
 
 
 def _usage_percentage(snapshot: UsageSnapshot) -> Optional[float]:
-    if snapshot.monthly_quota is None or snapshot.monthly_quota <= 0:
-        return None
-    return (snapshot.premium_requests_used / snapshot.monthly_quota) * 100.0
+    return snapshot.usage_percent
 
 
 def _format_percentage(value: Optional[float]) -> str:
@@ -338,6 +352,25 @@ def _build_footer(snapshot: UsageSnapshot, stale: bool, stale_reason: str) -> st
     if not snapshot.has_personal_usage_data:
         return "No personal usage data"
     return ""
+
+
+def _format_credit_usage(snapshot: UsageSnapshot) -> str:
+    return f"{_format_credit_count(snapshot)} used"
+
+
+def _format_credit_count(snapshot: UsageSnapshot) -> str:
+    used_text = _format_quantity(snapshot.credits_used)
+    if snapshot.included_credits is None or snapshot.included_credits <= 0:
+        return used_text
+    included_text = _format_quantity(snapshot.included_credits)
+    return f"{used_text} / {included_text}"
+
+
+def _format_quantity(value: float) -> str:
+    formatted = f"{value:,.2f}".rstrip("0").rstrip(".")
+    if formatted == "-0":
+        return "0"
+    return formatted
 
 
 def _truncate(text: str, width: int) -> str:

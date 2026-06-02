@@ -17,7 +17,7 @@ VALID_OUTPUT_MODES = {"console", "eink", "both"}
 class AppConfig:
     github_token: str
     copilot_license: Optional[str]
-    copilot_monthly_quota: Optional[float]
+    copilot_included_credits: Optional[float]
     refresh_seconds: int
     output_mode: str
     eink_driver_module: str
@@ -129,9 +129,15 @@ def load_config() -> AppConfig:
             "GITHUB_TOKEN is required. Create a fine-grained PAT with user 'Plan: read' permission."
         )
 
-    copilot_monthly_quota = _parse_optional_float(
-        "COPILOT_MONTHLY_QUOTA",
-        os.getenv("COPILOT_MONTHLY_QUOTA"),
+    included_credits_name = "COPILOT_INCLUDED_CREDITS"
+    included_credits_raw = os.getenv(included_credits_name)
+    if included_credits_raw is None:
+        included_credits_name = "COPILOT_MONTHLY_QUOTA"
+        included_credits_raw = os.getenv(included_credits_name)
+
+    copilot_included_credits = _parse_optional_float(
+        included_credits_name,
+        included_credits_raw,
         minimum=0.0,
     )
     copilot_license = _parse_optional_string(os.getenv("COPILOT_LICENSE"))
@@ -159,7 +165,7 @@ def load_config() -> AppConfig:
     return AppConfig(
         github_token=token,
         copilot_license=copilot_license,
-        copilot_monthly_quota=copilot_monthly_quota,
+        copilot_included_credits=copilot_included_credits,
         refresh_seconds=refresh_seconds,
         output_mode=output_mode,
         eink_driver_module=eink_driver_module,
