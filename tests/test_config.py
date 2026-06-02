@@ -36,7 +36,7 @@ def test_load_config_uses_defaults_for_optional_values() -> None:
 
     assert config.github_token == "test-token"
     assert config.copilot_license is None
-    assert config.copilot_monthly_quota is None
+    assert config.copilot_included_credits is None
     assert config.refresh_seconds == 10
     assert config.output_mode == "both"
     assert config.eink_driver_module == "auto"
@@ -52,7 +52,7 @@ def test_load_config_parses_explicit_values() -> None:
         {
             "GITHUB_TOKEN": "test-token",
             "COPILOT_LICENSE": " Copilot Pro+ ",
-            "COPILOT_MONTHLY_QUOTA": "1500",
+            "COPILOT_INCLUDED_CREDITS": "7000",
             "REFRESH_SECONDS": "30",
             "OUTPUT_MODE": " EINK ",
             "EINK_DRIVER_MODULE": "epd2in13_V4",
@@ -67,7 +67,7 @@ def test_load_config_parses_explicit_values() -> None:
         config = load_config()
 
     assert config.copilot_license == "Copilot Pro+"
-    assert config.copilot_monthly_quota == 1500.0
+    assert config.copilot_included_credits == 7000.0
     assert config.refresh_seconds == 30
     assert config.output_mode == "eink"
     assert config.eink_driver_module == "epd2in13_V4"
@@ -98,3 +98,14 @@ def test_load_config_rejects_invalid_output_mode() -> None:
             load_config()
 
     assert "OUTPUT_MODE must be one of" in str(raised.value)
+
+
+def test_load_config_accepts_legacy_monthly_quota_as_included_credits() -> None:
+    with patch("copilot_usage_meter.config.load_dotenv"), patch.dict(
+        os.environ,
+        {"GITHUB_TOKEN": "test-token", "COPILOT_MONTHLY_QUOTA": "1500"},
+        clear=True,
+    ):
+        config = load_config()
+
+    assert config.copilot_included_credits == 1500.0

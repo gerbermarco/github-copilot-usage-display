@@ -11,13 +11,13 @@ Feel free to fork the repo and adapt it for your own display hardware or layout 
 - E-ink-friendly compact card (VS Code-inspired)
 - Copilot license label
 - Username
-- Premium request usage percentage and progress bar
+- Alternating Copilot credit usage percentage and exact used/included credits, plus a progress bar
 
 ## Data Source
 
 This app uses the official user billing API endpoint:
 
-- GET /users/{username}/settings/billing/premium_request/usage
+- GET /users/{username}/settings/billing/usage/summary
 
 Important scope note:
 
@@ -41,7 +41,7 @@ Run these one-time OS setup commands on a fresh Raspberry Pi OS install:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv python3-pip python3-dev libgpiod2 libfreetype6-dev
+sudo apt install -y python3-venv python3-pip python3-dev build-essential libfreetype6-dev swig liblgpio-dev fonts-dejavu-core
 ```
 
 Enable SPI for the e-ink HAT:
@@ -87,7 +87,8 @@ CLI flags take precedence over `.env` values.
 - `OUTPUT_MODE` controls where snapshots are rendered: `console`, `eink`, or `both`.
 - The default is `both` to preserve the current combined terminal and e-ink behavior.
 - Prints a compact VS Code-like usage card every refresh interval.
-- If `COPILOT_MONTHLY_QUOTA` is missing, percentage shows as `N/A`.
+- If `COPILOT_INCLUDED_CREDITS` is missing and GitHub does not return an included-credit limit, percentage shows as `N/A`.
+- The older `COPILOT_MONTHLY_QUOTA` environment variable is still accepted as a fallback.
 - `OUTPUT_MODE=console` skips e-ink initialization entirely.
 - `OUTPUT_MODE=eink` sends snapshot cards only to the e-ink display.
 - On API failures, prints the last successful snapshot and includes the latest error.
@@ -95,5 +96,6 @@ CLI flags take precedence over `.env` values.
 
 ## Limitations
 
-- Percentage output depends on your manual `COPILOT_MONTHLY_QUOTA` value and is only as accurate as that configured quota.
+- While using the display, I noticed GitHub billing usage is not real time; the API can lag behind the current VS Code card by about five minutes.
+- Percentage output depends on GitHub returning an included-credit limit or your manual `COPILOT_INCLUDED_CREDITS` value.
 - Org-managed or enterprise-managed billing is not included in personal endpoints.

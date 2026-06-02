@@ -147,7 +147,9 @@ class GitHubClient:
         year: Optional[int] = None,
         month: Optional[int] = None,
         day: Optional[int] = None,
+        repository: Optional[str] = None,
         product: Optional[str] = "Copilot",
+        sku: Optional[str] = None,
     ) -> Dict[str, Any]:
         return self._request_json(
             "GET",
@@ -156,6 +158,8 @@ class GitHubClient:
                 "year": year,
                 "month": month,
                 "day": day,
+                "repository": repository,
                 "product": product,
+                "sku": sku,
             },
         )

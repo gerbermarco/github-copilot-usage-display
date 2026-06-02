@@ -12,7 +12,7 @@ def _build_config(output_mode: str = "both") -> AppConfig:
     return AppConfig(
         github_token="test-token",
         copilot_license=None,
-        copilot_monthly_quota=1500.0,
+        copilot_included_credits=7000.0,
         refresh_seconds=10,
         output_mode=output_mode,
         eink_driver_module="auto",
@@ -28,11 +28,12 @@ def _build_snapshot() -> UsageSnapshot:
     return UsageSnapshot(
         fetched_at_utc=datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
         username="octocat",
-        source="/users/octocat/settings/billing/premium_request/usage",
+        source="/users/octocat/settings/billing/usage/summary",
         license_name="Copilot Pro+",
-        premium_requests_used=281.0,
-        premium_net_amount_usd=0.72,
-        monthly_quota=1500.0,
+        credits_used=281.0,
+        credit_net_amount_usd=0.72,
+        included_credits=7000.0,
+        usage_percent=4.014285714285714,
         top_models=[],
         has_personal_usage_data=True,
     )
@@ -79,7 +80,7 @@ def test_emits_stale_snapshot_after_api_error_when_previous_snapshot_exists() ->
     snapshot = _build_snapshot()
     client = Mock()
     client.get_authenticated_username.return_value = "octocat"
-    client.get_user_premium_request_usage.side_effect = [
+    client.get_user_usage_summary.side_effect = [
         {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]},
         GitHubApiError("Network timeout"),
     ]
@@ -114,7 +115,7 @@ def test_emits_stale_snapshot_after_api_error_when_previous_snapshot_exists() ->
 def test_prints_404_hint_only_once() -> None:
     client = Mock()
     client.get_authenticated_username.return_value = "octocat"
-    client.get_user_premium_request_usage.side_effect = [
+    client.get_user_usage_summary.side_effect = [
         GitHubApiError("missing", status_code=404),
         GitHubApiError("missing", status_code=404),
     ]
@@ -155,7 +156,12 @@ def test_emit_snapshot_console_only_skips_eink() -> None:
             eink_display=eink_display,
         )
 
-    render_snapshot_mock.assert_called_once_with(snapshot, stale=False, stale_reason="")
+    render_snapshot_mock.assert_called_once_with(
+        snapshot,
+        stale=False,
+        stale_reason="",
+        show_credit_count=False,
+    )
     assert print_mock.call_count == 2
     assert print_mock.call_args_list[0].args == ("console-card",)
     assert print_mock.call_args_list[1].args == ()
@@ -179,7 +185,12 @@ def test_emit_snapshot_eink_only_skips_console() -> None:
 
     render_snapshot_mock.assert_not_called()
     print_mock.assert_not_called()
-    eink_display.render_snapshot.assert_called_once_with(snapshot, stale=True, stale_reason="timeout")
+    eink_display.render_snapshot.assert_called_once_with(
+        snapshot,
+        stale=True,
+        stale_reason="timeout",
+        show_credit_count=False,
+    )
 
 def test_emit_snapshot_both_outputs_to_console_and_eink() -> None:
     snapshot = _build_snapshot()
@@ -197,15 +208,56 @@ def test_emit_snapshot_both_outputs_to_console_and_eink() -> None:
             eink_display=eink_display,
         )
 
-    render_snapshot_mock.assert_called_once_with(snapshot, stale=False, stale_reason="")
+    render_snapshot_mock.assert_called_once_with(
+        snapshot,
+        stale=False,
+        stale_reason="",
+        show_credit_count=False,
+    )
     assert print_mock.call_count == 2
-    eink_display.render_snapshot.assert_called_once_with(snapshot, stale=False, stale_reason="")
+    eink_display.render_snapshot.assert_called_once_with(
+        snapshot,
+        stale=False,
+        stale_reason="",
+        show_credit_count=False,
+    )
+
+
+def test_emit_snapshot_can_request_credit_count_metric() -> None:
+    snapshot = _build_snapshot()
+    eink_display = Mock()
+
+    with (
+        patch("copilot_usage_meter.main.render_snapshot", return_value="console-card") as render_snapshot_mock,
+        patch("builtins.print"),
+    ):
+        _emit_snapshot(
+            snapshot,
+            stale=False,
+            stale_reason="",
+            output_mode="both",
+            eink_display=eink_display,
+            show_credit_count=True,
+        )
+
+    render_snapshot_mock.assert_called_once_with(
+        snapshot,
+        stale=False,
+        stale_reason="",
+        show_credit_count=True,
+    )
+    eink_display.render_snapshot.assert_called_once_with(
+        snapshot,
+        stale=False,
+        stale_reason="",
+        show_credit_count=True,
+    )
 
 def test_run_skips_eink_initialization_for_console_mode() -> None:
     snapshot = _build_snapshot()
     client = Mock()
     client.get_authenticated_username.return_value = "octocat"
-    client.get_user_premium_request_usage.return_value = {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]}
+    client.get_user_usage_summary.return_value = {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]}
 
     with (
         patch("copilot_usage_meter.main._parse_args", return_value=Namespace(refresh_seconds=None)),
@@ -229,7 +281,7 @@ def test_run_uses_cli_output_mode_override_over_config() -> None:
     snapshot = _build_snapshot()
     client = Mock()
     client.get_authenticated_username.return_value = "octocat"
-    client.get_user_premium_request_usage.return_value = {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]}
+    client.get_user_usage_summary.return_value = {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]}
 
     with (
         patch(
@@ -250,3 +302,26 @@ def test_run_uses_cli_output_mode_override_over_config() -> None:
     eink_display_class.assert_not_called()
     emit_snapshot.assert_called_once()
     assert emit_snapshot.call_args.kwargs["output_mode"] == "console"
+
+
+def test_run_alternates_percentage_and_credit_count_views() -> None:
+    snapshot = _build_snapshot()
+    client = Mock()
+    client.get_authenticated_username.return_value = "octocat"
+    client.get_user_usage_summary.return_value = {"usageItems": [{"product": "Copilot", "grossQuantity": 281}]}
+
+    with (
+        patch("copilot_usage_meter.main._parse_args", return_value=Namespace(refresh_seconds=None)),
+        patch("copilot_usage_meter.main.load_config", return_value=_build_config(output_mode="console")),
+        patch("copilot_usage_meter.main.GitHubClient", return_value=client),
+        patch("copilot_usage_meter.main.build_usage_snapshot", return_value=snapshot),
+        patch("copilot_usage_meter.main._emit_snapshot") as emit_snapshot,
+        patch("copilot_usage_meter.main.time.sleep", side_effect=[None, KeyboardInterrupt]),
+        patch("builtins.print"),
+    ):
+        exit_code = run()
+
+    assert exit_code == 0
+    assert emit_snapshot.call_count == 2
+    assert emit_snapshot.call_args_list[0].kwargs["show_credit_count"] is False
+    assert emit_snapshot.call_args_list[1].kwargs["show_credit_count"] is True

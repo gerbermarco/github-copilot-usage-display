@@ -60,9 +60,9 @@ def _billing_404_hint(username: str) -> str:
     return (
         "Billing endpoint returned 404. Per GitHub billing usage docs, this usually means one of: \n"
         "- Token permissions are insufficient (use a fine-grained PAT with user Plan permission set to read).\n"
-        "- The account does not expose personal billing usage for this endpoint (for example not on required billing platform).\n"
+        "- The account does not expose personal billing usage for this endpoint (for example not on the enhanced billing platform).\n"
         "- Copilot usage is billed through an organization or enterprise, not directly to the personal account.\n"
-        f"Endpoint called: /users/{username}/settings/billing/premium_request/usage"
+        f"Endpoint called: /users/{username}/settings/billing/usage/summary"
     )
 
 
@@ -80,6 +80,7 @@ def _emit_snapshot(
     stale_reason: str,
     output_mode: str,
     eink_display: Optional[EInkDisplay],
+    show_credit_count: bool = False,
 ) -> None:
     if _uses_console_output(output_mode):
         print(
@@ -87,13 +88,19 @@ def _emit_snapshot(
                 snapshot,
                 stale=stale,
                 stale_reason=stale_reason,
+                show_credit_count=show_credit_count,
             )
         )
         print()
 
     if _uses_eink_output(output_mode) and eink_display is not None:
         try:
-            eink_display.render_snapshot(snapshot, stale=stale, stale_reason=stale_reason)
+            eink_display.render_snapshot(
+                snapshot,
+                stale=stale,
+                stale_reason=stale_reason,
+                show_credit_count=show_credit_count,
+            )
         except EInkDisplayError as exc:
             print(f"E-ink display update failed: {exc}", file=sys.stderr)
 
@@ -134,12 +141,13 @@ def run() -> int:
 
     last_snapshot = None
     printed_404_hint = False
+    show_credit_count = False
 
     try:
         while True:
             fetched_at = datetime.now(timezone.utc)
             try:
-                payload = client.get_user_premium_request_usage(
+                payload = client.get_user_usage_summary(
                     username=username,
                     year=fetched_at.year,
                     month=fetched_at.month,
@@ -147,9 +155,9 @@ def run() -> int:
                 )
                 snapshot = build_usage_snapshot(
                     username=username,
-                    premium_usage_payload=payload,
+                    usage_summary_payload=payload,
                     fetched_at_utc=fetched_at,
-                    monthly_quota=config.copilot_monthly_quota,
+                    included_credits=config.copilot_included_credits,
                     license_name=config.copilot_license,
                 )
                 _emit_snapshot(
@@ -158,8 +166,10 @@ def run() -> int:
                     stale_reason="",
                     output_mode=config.output_mode,
                     eink_display=eink_display,
+                    show_credit_count=show_credit_count,
                 )
                 last_snapshot = snapshot
+                show_credit_count = not show_credit_count
             except GitHubApiError as exc:
                 if exc.status_code == 404 and not printed_404_hint:
                     print(_billing_404_hint(username), file=sys.stderr)
@@ -174,7 +184,9 @@ def run() -> int:
                         stale_reason=str(exc),
                         output_mode=config.output_mode,
                         eink_display=eink_display,
+                        show_credit_count=show_credit_count,
                     )
+                    show_credit_count = not show_credit_count
 
             time.sleep(config.refresh_seconds)
     except KeyboardInterrupt:

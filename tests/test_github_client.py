@@ -27,7 +27,7 @@ def _build_config(**overrides) -> AppConfig:
     values = {
         "github_token": "test-token",
         "copilot_license": None,
-        "copilot_monthly_quota": None,
+        "copilot_included_credits": None,
         "refresh_seconds": 10,
         "output_mode": "both",
         "eink_driver_module": "auto",
@@ -52,6 +52,32 @@ def test_build_url_filters_none_query_values() -> None:
     assert url == (
         f"{GITHUB_API_BASE_URL}/users/octocat/settings/billing/premium_request/usage"
         "?year=2026&product=Copilot"
+    )
+
+
+def test_get_user_usage_summary_uses_summary_endpoint_and_filters_query_values() -> None:
+    client = GitHubClient(_build_config())
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        del timeout
+        return _FakeResponse(b'{"usageItems": []}')
+
+    with patch("copilot_usage_meter.github_client.urlopen", side_effect=fake_urlopen):
+        payload = client.get_user_usage_summary(
+            username="octocat",
+            year=2026,
+            month=6,
+            day=None,
+            product="Copilot",
+            sku=None,
+        )
+
+    assert payload == {"usageItems": []}
+    assert captured["url"] == (
+        f"{GITHUB_API_BASE_URL}/users/octocat/settings/billing/usage/summary"
+        "?year=2026&month=6&product=Copilot"
     )
 
 def test_get_authenticated_username_sends_expected_headers() -> None:
